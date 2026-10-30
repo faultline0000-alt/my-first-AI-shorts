@@ -33,6 +33,9 @@ def create_video():
         return jsonify(error='사진을 각 장면에 한 장씩, 총 3장 선택해 주세요.'), 400
     if any(not text or len(text) > 60 for text in captions):
         return jsonify(error='각 자막은 1~60자로 입력해 주세요.'), 400
+    voice = request.form.get('voice', 'male')
+    if voice not in ('none', 'male', 'female'):
+        return jsonify(error='목소리를 다시 선택해 주세요.'), 400
     highlights = tuple(word.strip() for word in request.form.get('highlights', '').split(',')
                        if word.strip())
     if len(highlights) > 20 or any(len(word) > 30 for word in highlights):
@@ -55,7 +58,7 @@ def create_video():
                     raise ValueError(f'{i + 1}번 사진을 읽을 수 없습니다. JPG 또는 PNG 파일을 확인해 주세요.') from error
                 paths.append(path)
             output = render_video(paths, captions, folder / 'ai_shorts.mp4',
-                                  highlight_words=highlights, logger=None)
+                                  highlight_words=highlights, logger=None, voice=voice)
             # 임시 사진·파일을 지워도 브라우저는 완성된 영상 데이터를 받을 수 있습니다.
             result = BytesIO(output.read_bytes())
         return send_file(result, mimetype='video/mp4', as_attachment=True,

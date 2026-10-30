@@ -2,6 +2,7 @@
 import argparse
 import os
 import re
+from tempfile import TemporaryDirectory
 from pathlib import Path
 
 import numpy as np
@@ -10,11 +11,11 @@ from moviepy import CompositeVideoClip, ImageClip, vfx
 
 WIDTH, HEIGHT, FPS = 1080, 1920, 30
 SCENE_SECONDS, TRANSITION_SECONDS = 5, 0.2
-CAPTIONS = ["AI 혁명은 이미 시작됐다", "반도체가 미래를 움직인다", "다음 혁신은 로봇이다"]
+CAPTIONS = ["AI 시대, 내 일은 안전할까?", "반복 업무부터 바뀌고 있습니다", "AI에게 맡기고 싶은 일은?"]
 TOTAL_SECONDS = SCENE_SECONDS * len(CAPTIONS)
 CAPTION_HEIGHT = 420
 CAPTION_ENTRY_SECONDS = 0.6
-HIGHLIGHT_WORDS = ("AI", "혁명", "반도체", "미래", "로봇", "일상", "인간")
+HIGHLIGHT_WORDS = ("AI", "안전", "반복 업무", "맡기고")
 ROOT = Path(__file__).resolve().parent
 
 
@@ -130,10 +131,12 @@ def caption_position(t):
 
 
 def render_video(paths, captions, output, font=None, highlight_words=HIGHLIGHT_WORDS,
-                 logger="bar"):
+                 logger="bar", voice="none"):
     """CLI와 웹에서 함께 사용하는 영상 생성 함수입니다."""
     if len(paths) != 3 or len(captions) != 3:
         raise ValueError("사진과 자막을 각각 3개씩 준비해 주세요.")
+    if voice not in ("none", "male", "female"):
+        raise ValueError("지원하지 않는 목소리입니다.")
     captions = [text.strip() for text in captions]
     if any(not text or len(text) > 60 for text in captions):
         raise ValueError("각 자막은 1~60자로 입력해 주세요.")
@@ -166,14 +169,27 @@ def render_video(paths, captions, output, font=None, highlight_words=HIGHLIGHT_W
     video = CompositeVideoClip(layers, size=(WIDTH, HEIGHT)).with_duration(TOTAL_SECONDS)
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
+    audio = None
+    audio_sources = []
+    voice_temp = TemporaryDirectory(prefix="shorts-voice-")
     try:
-        video.write_videofile(str(output), fps=FPS, codec="libx264", audio=False,
+        if voice != "none":
+            from narration import create_narration
+            audio, audio_sources = create_narration(captions, voice, voice_temp.name)
+            video = video.with_audio(audio)
+        video.write_videofile(str(output), fps=FPS, codec="libx264", audio=(voice != "none"), audio_codec="aac",
+                              temp_audiofile=str(Path(voice_temp.name) / "mixed.m4a"),
                               preset="fast", threads=2, logger=logger,
                               ffmpeg_params=["-crf", "20", "-pix_fmt", "yuv420p", "-movflags", "+faststart"])
     finally:
         video.close()
+        if audio is not None:
+            audio.close()
+        for source in audio_sources:
+            source.close()
         for layer in layers:
             layer.close()
+        voice_temp.cleanup()
     return output
 
 
@@ -182,10 +198,12 @@ def main():
     parser.add_argument("--font", help="한글 TTF/OTF/TTC 폰트 경로")
     parser.add_argument("--photos", type=Path, default=ROOT / "shorts_사진",
                         help="사진 3장이 있는 폴더")
+    parser.add_argument("--voice", choices=("male", "female", "none"), default="male",
+                        help="남성=male, 여성=female, 무음=none (기본: 차분한 남성)")
     args = parser.parse_args()
     try:
         output = render_video(photo_paths(args.photos), CAPTIONS,
-                              ROOT / "output/ai_shorts.mp4", font=args.font)
+                              ROOT / "output/ai_shorts.mp4", font=args.font, voice=args.voice)
     except ValueError as error:
         raise SystemExit(str(error)) from error
     print(f"완료: {output}")

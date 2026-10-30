@@ -50,6 +50,7 @@ class WebTests(unittest.TestCase):
             self.assertEqual(len(paths), 3)
             self.assertEqual(captions[2], 'AI와 미래 2')
             self.assertEqual(kwargs['highlight_words'], ('AI', '미래'))
+            self.assertEqual(kwargs['voice'], 'male')
             output.write_bytes(b'video-test')
             return output
         with patch.object(web, 'render_video', side_effect=render):
