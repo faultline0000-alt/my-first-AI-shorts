@@ -1,4 +1,4 @@
-"""외부 이미지나 음악 없이 만드는 15초 AI 숏츠 (MoviePy 2.x)."""
+"""외부 이미지나 음악 없이 만드는 30초 AI 숏츠 (MoviePy 2.x)."""
 import argparse
 import os
 from pathlib import Path
@@ -8,7 +8,10 @@ from PIL import Image, ImageDraw, ImageFont
 from moviepy import CompositeVideoClip, ImageClip, vfx
 
 WIDTH, HEIGHT, FPS = 1080, 1920, 30
-CAPTIONS = ["AI 혁명은 이미 시작됐다", "반도체가 미래를 움직인다", "다음 혁신은 로봇이다"]
+SCENE_SECONDS, TRANSITION_SECONDS = 6, 0.4
+CAPTIONS = ["AI 혁명은 이미 시작됐다", "반도체가 미래를 움직인다", "다음 혁신은 로봇이다",
+            "AI가 우리의 일상을 바꾼다", "인간과 AI가 미래를 만든다"]
+TOTAL_SECONDS = SCENE_SECONDS * len(CAPTIONS)
 ROOT = Path(__file__).resolve().parent
 
 
@@ -34,13 +37,13 @@ def background(scene):
     # 모든 도형을 직접 그리므로 외부 이미지가 필요하지 않습니다.
     y, x = np.mgrid[0:HEIGHT, 0:WIDTH]
     glow = np.exp(-((x - 540) ** 2 / 260000 + (y - 800) ** 2 / 650000))
-    colors = [(15, 100, 165), (35, 150, 100), (100, 65, 170)]
+    colors = [(15, 100, 165), (35, 150, 100), (100, 65, 170), (20, 130, 155), (155, 95, 45)]
     rgb = np.zeros((HEIGHT, WIDTH, 3), dtype=np.uint8)
     for channel, value in enumerate(colors[scene]):
         rgb[:, :, channel] = (8 + glow * value).astype(np.uint8)
     img = Image.fromarray(rgb)
     d = ImageDraw.Draw(img)
-    accent = [(70, 220, 255), (80, 255, 160), (195, 150, 255)][scene]
+    accent = [(70, 220, 255), (80, 255, 160), (195, 150, 255), (70, 235, 225), (255, 195, 100)][scene]
     for xx in range(0, WIDTH, 90):
         d.line((xx, 0, xx, HEIGHT), fill=(22, 40, 60), width=2)
     for yy in range(0, HEIGHT, 90):
@@ -66,7 +69,7 @@ def background(scene):
         d.rounded_rectangle((290, 620, 790, 1260), radius=35, fill=(12, 42, 38), outline=accent, width=12)
         for inset in (40, 80, 120):
             d.rectangle((290+inset, 620+inset, 790-inset, 1260-inset), outline=(35, 130, 95), width=5)
-    else:
+    elif scene == 2:
         d.rounded_rectangle((310, 420, 770, 850), radius=100, fill=(70, 65, 105), outline=accent, width=10)
         d.rounded_rectangle((365, 540, 715, 690), radius=45, fill=(10, 18, 35), outline=accent, width=5)
         for xx in (435, 645):
@@ -76,6 +79,35 @@ def background(scene):
         for left in (140, 830):
             d.rounded_rectangle((left, 970, left+110, 1430), radius=45, fill=(60, 55, 90), outline=accent, width=7)
         d.ellipse((470, 1100, 610, 1240), outline=accent, width=10)
+    elif scene == 3:
+        # 회로로 연결된 스마트 도시: AI가 일상에 스며드는 모습
+        buildings = [(150, 690, 330, 1390), (380, 480, 600, 1390),
+                     (650, 760, 900, 1390)]
+        for left, top, right, bottom in buildings:
+            d.rounded_rectangle((left, top, right, bottom), radius=20,
+                                fill=(15, 45, 60), outline=accent, width=7)
+            for xx in range(left + 30, right - 20, 50):
+                for yy in range(top + 45, bottom - 30, 85):
+                    d.rectangle((xx, yy, xx + 20, yy + 30), fill=accent)
+        for radius in (85, 150, 215):
+            d.arc((540-radius, 420-radius, 540+radius, 420+radius),
+                  205, 335, fill=accent, width=8)
+        d.line((120, 1460, 960, 1460), fill=accent, width=6)
+    else:
+        # 인간과 AI를 연결하는 빛: 기존의 도형·격자 스타일을 유지
+        d.ellipse((190, 520, 410, 740), fill=(65, 55, 45), outline=accent, width=9)
+        d.rounded_rectangle((160, 800, 440, 1350), radius=90,
+                            fill=(55, 43, 35), outline=accent, width=9)
+        d.rounded_rectangle((670, 520, 890, 740), radius=45,
+                            fill=(55, 43, 35), outline=accent, width=9)
+        for xx in (730, 830):
+            d.ellipse((xx-16, 600, xx+16, 632), fill=accent)
+        d.rounded_rectangle((640, 800, 920, 1350), radius=45,
+                            fill=(55, 43, 35), outline=accent, width=9)
+        d.line((420, 1140, 540, 1210, 660, 1140), fill=accent, width=18)
+        for radius in (65, 100, 140):
+            d.ellipse((540-radius, 410-radius, 540+radius, 410+radius),
+                      outline=accent, width=5)
     return np.array(img)
 
 
@@ -102,18 +134,18 @@ def main():
     print(f"사용하는 한글 폰트: {font_path}")
     layers = []
     for i, text in enumerate(CAPTIONS):
-        duration = 5.4 if i < 2 else 5.0
+        duration = SCENE_SECONDS + (TRANSITION_SECONDS if i < len(CAPTIONS) - 1 else 0)
         bg = (ImageClip(background(i)).with_duration(duration)
               .resized(lambda t: 1 + 0.012 * t).with_position("center"))
         scene = CompositeVideoClip([bg], size=(WIDTH, HEIGHT)).with_duration(duration)
         if i:
-            scene = scene.with_effects([vfx.CrossFadeIn(0.4)])
-        layers.append(scene.with_start(i * 5))
-    # 자막은 배경 전환과 별도로 정확히 0/5/10초에 바뀝니다.
+            scene = scene.with_effects([vfx.CrossFadeIn(TRANSITION_SECONDS)])
+        layers.append(scene.with_start(i * SCENE_SECONDS))
+    # 자막은 배경 전환과 별도로 정확히 0/6/12/18/24초에 바뀝니다.
     for i, text in enumerate(CAPTIONS):
         layers.append(ImageClip(caption_image(text, font_path))
-                      .with_start(i * 5).with_duration(5))
-    video = CompositeVideoClip(layers, size=(WIDTH, HEIGHT)).with_duration(15)
+                      .with_start(i * SCENE_SECONDS).with_duration(SCENE_SECONDS))
+    video = CompositeVideoClip(layers, size=(WIDTH, HEIGHT)).with_duration(TOTAL_SECONDS)
     output = ROOT / "output/ai_shorts.mp4"
     output.parent.mkdir(parents=True, exist_ok=True)
     try:
