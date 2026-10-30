@@ -11,7 +11,7 @@ if not exist ".venv\Scripts\python.exe" (
         exit /b 1
     )
 )
-".venv\Scripts\python.exe" -c "import flask, moviepy, edge_tts" >nul 2>&1
+".venv\Scripts\python.exe" -c "import flask, moviepy, edge_tts; from importlib.metadata import version; assert version('edge-tts') == '7.3.1'" >nul 2>&1
 if errorlevel 1 (
     echo Installing required packages. Please wait...
     ".venv\Scripts\python.exe" -m pip install -r requirements.txt

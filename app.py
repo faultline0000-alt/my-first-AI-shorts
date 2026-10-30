@@ -34,7 +34,7 @@ def create_video():
     if any(not text or len(text) > 60 for text in captions):
         return jsonify(error='각 자막은 1~60자로 입력해 주세요.'), 400
     voice = request.form.get('voice', 'male')
-    if voice not in ('none', 'male', 'female'):
+    if voice not in ('none', 'male', 'female', 'windows'):
         return jsonify(error='목소리를 다시 선택해 주세요.'), 400
     highlights = tuple(word.strip() for word in request.form.get('highlights', '').split(',')
                        if word.strip())

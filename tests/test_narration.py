@@ -52,6 +52,26 @@ class NarrationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, '1번 자막'):
                 create_narration(['긴 문장'] * 3, 'male', folder)
 
+    def test_windows_voice_uses_stdin_for_user_text(self):
+        import json
+        import narration
+        with tempfile.TemporaryDirectory() as folder:
+            output = Path(folder) / 'voice.wav'
+            output.write_bytes(b'test')
+            with patch.object(narration.sys, 'platform', 'win32'), patch.object(narration.subprocess, 'run') as run:
+                run.return_value.returncode = 0
+                narration.synthesize_windows('한글 $변수; AI', output)
+                self.assertEqual(json.loads(run.call_args.kwargs['input'])['text'], '한글 $변수; 에이아이')
+                self.assertNotIn('한글', run.call_args.args[0][-1])
+
+    def test_windows_missing_voice_has_installation_help(self):
+        import narration
+        with tempfile.TemporaryDirectory() as folder:
+            with patch.object(narration.sys, 'platform', 'win32'), patch.object(narration.subprocess, 'run') as run:
+                run.return_value.returncode = 1
+                with self.assertRaisesRegex(ValueError, '언어 옵션'):
+                    narration.synthesize_windows('한국어', Path(folder) / 'voice.wav')
+
     def test_invalid_voice_is_rejected(self):
         from test_web import WebTests
         with web.app.test_client() as client:

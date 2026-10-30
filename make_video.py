@@ -135,7 +135,7 @@ def render_video(paths, captions, output, font=None, highlight_words=HIGHLIGHT_W
     """CLI와 웹에서 함께 사용하는 영상 생성 함수입니다."""
     if len(paths) != 3 or len(captions) != 3:
         raise ValueError("사진과 자막을 각각 3개씩 준비해 주세요.")
-    if voice not in ("none", "male", "female"):
+    if voice not in ("none", "male", "female", "windows"):
         raise ValueError("지원하지 않는 목소리입니다.")
     captions = [text.strip() for text in captions]
     if any(not text or len(text) > 60 for text in captions):
@@ -198,7 +198,7 @@ def main():
     parser.add_argument("--font", help="한글 TTF/OTF/TTC 폰트 경로")
     parser.add_argument("--photos", type=Path, default=ROOT / "shorts_사진",
                         help="사진 3장이 있는 폴더")
-    parser.add_argument("--voice", choices=("male", "female", "none"), default="male",
+    parser.add_argument("--voice", choices=("male", "female", "windows", "none"), default="male",
                         help="남성=male, 여성=female, 무음=none (기본: 차분한 남성)")
     args = parser.parse_args()
     try:
