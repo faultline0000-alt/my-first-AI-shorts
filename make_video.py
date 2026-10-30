@@ -1,6 +1,7 @@
 """외부 이미지나 음악 없이 만드는 30초 AI 숏츠 (MoviePy 2.x)."""
 import argparse
 import os
+import re
 from pathlib import Path
 
 import numpy as np
@@ -12,6 +13,9 @@ SCENE_SECONDS, TRANSITION_SECONDS = 6, 0.4
 CAPTIONS = ["AI 혁명은 이미 시작됐다", "반도체가 미래를 움직인다", "다음 혁신은 로봇이다",
             "AI가 우리의 일상을 바꾼다", "인간과 AI가 미래를 만든다"]
 TOTAL_SECONDS = SCENE_SECONDS * len(CAPTIONS)
+CAPTION_HEIGHT = 420
+CAPTION_ENTRY_SECONDS = 0.6
+HIGHLIGHT_WORDS = ("AI", "혁명", "반도체", "미래", "로봇", "일상", "인간")
 ROOT = Path(__file__).resolve().parent
 
 
@@ -112,18 +116,51 @@ def background(scene):
 
 
 def caption_image(text, font_path):
-    img = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
+    """큰 두 줄 자막을 그리고 핵심 단어만 노란색으로 강조합니다."""
+    img = Image.new("RGBA", (WIDTH, CAPTION_HEIGHT), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    size = 76
-    font = ImageFont.truetype(font_path, size)
-    while d.textbbox((0, 0), text, font=font)[2] > WIDTH - 120:
-        size -= 2
-        font = ImageFont.truetype(font_path, size)
-    # 반투명 띠와 외곽선으로 밝은 배경에서도 흰색 자막을 읽기 쉽게 합니다.
-    d.rounded_rectangle((35, 855, 1045, 1065), radius=28, fill=(0, 0, 0, 175))
-    d.text((WIDTH//2, HEIGHT//2), text, font=font, anchor="mm",
-           fill="white", stroke_width=3, stroke_fill=(0, 0, 0, 255))
+    font = ImageFont.truetype(font_path, 112)
+    # 글자를 작게 줄이는 대신 단어 사이에서 줄을 바꿉니다.
+    lines = []
+    line = ""
+    for word in text.split():
+        candidate = f"{line} {word}".strip()
+        if line and d.textlength(candidate, font=font) > WIDTH - 160:
+            lines.append(line)
+            line = word
+        else:
+            line = candidate
+    if line:
+        lines.append(line)
+    line_height = 145
+    block_height = line_height * len(lines)
+    if block_height > CAPTION_HEIGHT - 40:
+        raise ValueError("자막이 너무 깁니다. CAPTIONS의 문장을 짧게 줄여 주세요.")
+    top = (CAPTION_HEIGHT - block_height) // 2
+    d.rounded_rectangle((35, top - 15, WIDTH - 35, top + block_height + 15),
+                        radius=32, fill=(0, 0, 0, 175))
+    pattern = "(" + "|".join(re.escape(word) for word in HIGHLIGHT_WORDS) + ")"
+    for index, line in enumerate(lines):
+        x = (WIDTH - d.textlength(line, font=font)) / 2
+        y = top + index * line_height + line_height / 2
+        for part in re.split(pattern, line):
+            if not part:
+                continue
+            color = (255, 220, 40) if part in HIGHLIGHT_WORDS else "white"
+            d.text((x + 3, y + 7), part, font=font, anchor="lm",
+                   fill=(0, 0, 0, 230), stroke_width=7, stroke_fill=(0, 0, 0, 230))
+            d.text((x, y), part, font=font, anchor="lm", fill=color,
+                   stroke_width=5, stroke_fill=(0, 0, 0, 255))
+            x += d.textlength(part, font=font)
     return np.array(img)
+
+
+def caption_position(t):
+    """아래 화면 밖에서 출발해 중앙으로 올라오며 부드럽게 감속합니다."""
+    progress = min(max(t / CAPTION_ENTRY_SECONDS, 0), 1)
+    resting_y = (HEIGHT - CAPTION_HEIGHT) / 2
+    y = resting_y + (HEIGHT - resting_y) * (1 - progress) ** 3
+    return (0, y)
 
 
 def main():
@@ -144,7 +181,8 @@ def main():
     # 자막은 배경 전환과 별도로 정확히 0/6/12/18/24초에 바뀝니다.
     for i, text in enumerate(CAPTIONS):
         layers.append(ImageClip(caption_image(text, font_path))
-                      .with_start(i * SCENE_SECONDS).with_duration(SCENE_SECONDS))
+                      .with_duration(SCENE_SECONDS).with_position(caption_position)
+                      .with_start(i * SCENE_SECONDS))
     video = CompositeVideoClip(layers, size=(WIDTH, HEIGHT)).with_duration(TOTAL_SECONDS)
     output = ROOT / "output/ai_shorts.mp4"
     output.parent.mkdir(parents=True, exist_ok=True)
