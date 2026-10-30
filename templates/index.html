@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>사진으로 만드는 15초 숏츠</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="{{ url_for('static', filename='app.js') }}" defer></script>
+</head>
+<body>
+<main>
+  <header><span class="badge">MY SHORTS STUDIO</span><h1>사진 3장으로 완성하는<br><em>나만의 15초 숏츠</em></h1>
+    <p>사진과 자막을 넣어 주세요. 부드러운 줌인과 움직이는 자막은 자동으로 적용됩니다.</p>
+    <div class="specs">세로 9:16 · 1080×1920 · 30fps · 장면마다 5초 · 무음</div></header>
+  <form id="shorts-form">
+    <div class="scenes">
+    {% for caption in captions %}
+      <section class="scene"><div class="scene-heading"><h2>장면 {{ loop.index }}</h2><span>{{ loop.index0 * 5 }}–{{ loop.index * 5 }}초</span></div>
+        <label class="upload" for="photo{{ loop.index0 }}"><img class="photo-preview" hidden alt="장면 {{ loop.index }} 사진 미리보기"><span class="upload-label">＋ 사진 선택<br><small>JPG · PNG · WebP 등</small></span></label>
+        <input id="photo{{ loop.index0 }}" name="photo{{ loop.index0 }}" type="file" accept="image/jpeg,image/png,image/webp,image/bmp,image/tiff" required>
+        <label for="caption{{ loop.index0 }}">화면에 넣을 자막</label>
+        <textarea id="caption{{ loop.index0 }}" name="caption{{ loop.index0 }}" maxlength="60" rows="3" required>{{ caption }}</textarea>
+        <small>최대 60자 · 긴 문장은 자동으로 줄바꿈됩니다.</small>
+      </section>
+    {% endfor %}
+    </div>
+    <section class="options"><label for="highlights">노란색으로 강조할 단어</label>
+      <input id="highlights" name="highlights" value="{{ highlights }}" maxlength="600">
+      <small>쉼표로 구분해 주세요. 비워 두면 자막 전체가 흰색으로 표시됩니다.</small></section>
+    <p class="hint">사용 권한이 있는 사진을 선택해 주세요. 사진은 비율을 유지하며, 남는 공간은 흐린 배경으로 채웁니다.</p>
+    <button id="make-button" type="submit">15초 영상 만들기 →</button>
+  </form>
+  <p id="status" role="status" aria-live="polite"></p>
+  <section id="result" hidden><h2>영상이 완성됐어요!</h2><video id="result-video" controls playsinline></video><br><a id="download" class="download" download="ai_shorts.mp4">MP4 다운로드 ↓</a></section>
+  <footer>사진과 영상은 외부 AI 서비스에 전송하지 않습니다. 제작 중에는 이 화면을 열어 두세요.</footer>
+</main>
+</body>
+</html>

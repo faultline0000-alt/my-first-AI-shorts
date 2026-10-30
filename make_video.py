@@ -69,38 +69,50 @@ def load_photo(path):
         raise SystemExit(f"사진을 읽을 수 없습니다: {path}\n{error}") from error
 
 
-def caption_image(text, font_path):
+def caption_image(text, font_path, highlight_words=HIGHLIGHT_WORDS):
     """큰 두 줄 자막을 그리고 핵심 단어만 노란색으로 강조합니다."""
     img = Image.new("RGBA", (WIDTH, CAPTION_HEIGHT), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    font = ImageFont.truetype(font_path, 112)
-    # 글자를 작게 줄이는 대신 단어 사이에서 줄을 바꿉니다.
-    lines = []
-    line = ""
-    for word in text.split():
-        candidate = f"{line} {word}".strip()
-        if line and d.textlength(candidate, font=font) > WIDTH - 160:
-            lines.append(line)
-            line = word
-        else:
-            line = candidate
-    if line:
-        lines.append(line)
-    line_height = 145
-    block_height = line_height * len(lines)
-    if block_height > CAPTION_HEIGHT - 40:
-        raise ValueError("자막이 너무 깁니다. CAPTIONS의 문장을 짧게 줄여 주세요.")
+    # 공백 없는 한글도 화면 너비 안에서 줄바꿈하고 긴 문장은 조금 줄입니다.
+    for size in range(112, 63, -4):
+        font = ImageFont.truetype(font_path, size)
+        lines = []
+        for paragraph in text.splitlines():
+            line = ""
+            for word in paragraph.split():
+                candidate = f"{line} {word}".strip()
+                if line and d.textlength(candidate, font=font) > WIDTH - 160:
+                    lines.append(line)
+                    line = ""
+                # 아주 긴 붙여 쓴 단어만 글자 단위로 나눕니다.
+                if d.textlength(word, font=font) > WIDTH - 160:
+                    for character in word:
+                        if line and d.textlength(line + character, font=font) > WIDTH - 160:
+                            lines.append(line)
+                            line = ""
+                        line += character
+                else:
+                    line = f"{line} {word}".strip()
+            if line:
+                lines.append(line)
+        line_height = size + 33
+        block_height = line_height * len(lines)
+        if block_height <= CAPTION_HEIGHT - 40:
+            break
+    else:
+        raise ValueError("자막이 너무 깁니다. 문장을 더 짧게 입력해 주세요.")
     top = (CAPTION_HEIGHT - block_height) // 2
     d.rounded_rectangle((35, top - 15, WIDTH - 35, top + block_height + 15),
                         radius=32, fill=(0, 0, 0, 175))
-    pattern = "(" + "|".join(re.escape(word) for word in HIGHLIGHT_WORDS) + ")"
+    words = sorted({word for word in highlight_words if word}, key=len, reverse=True)
+    pattern = "(" + "|".join(re.escape(word) for word in words) + ")" if words else None
     for index, line in enumerate(lines):
         x = (WIDTH - d.textlength(line, font=font)) / 2
         y = top + index * line_height + line_height / 2
-        for part in re.split(pattern, line):
+        for part in (re.split(pattern, line) if pattern else [line]):
             if not part:
                 continue
-            color = (255, 220, 40) if part in HIGHLIGHT_WORDS else "white"
+            color = (255, 220, 40) if part in words else "white"
             d.text((x + 3, y + 7), part, font=font, anchor="lm",
                    fill=(0, 0, 0, 230), stroke_width=7, stroke_fill=(0, 0, 0, 230))
             d.text((x, y), part, font=font, anchor="lm", fill=color,
@@ -117,18 +129,21 @@ def caption_position(t):
     return (0, y)
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--font", help="한글 TTF/OTF/TTC 폰트 경로")
-    parser.add_argument("--photos", type=Path, default=ROOT / "shorts_사진",
-                        help="사진 3장이 있는 폴더 (기본: 프로젝트의 shorts_사진)")
-    args = parser.parse_args()
-    paths = photo_paths(args.photos)
-    photos = [load_photo(path) for path in paths]
-    for i, path in enumerate(paths):
-        print(f"{i * SCENE_SECONDS}~{(i + 1) * SCENE_SECONDS}초: {path.name}")
-    font_path = find_font(args.font)
-    print(f"사용하는 한글 폰트: {font_path}")
+def render_video(paths, captions, output, font=None, highlight_words=HIGHLIGHT_WORDS,
+                 logger="bar"):
+    """CLI와 웹에서 함께 사용하는 영상 생성 함수입니다."""
+    if len(paths) != 3 or len(captions) != 3:
+        raise ValueError("사진과 자막을 각각 3개씩 준비해 주세요.")
+    captions = [text.strip() for text in captions]
+    if any(not text or len(text) > 60 for text in captions):
+        raise ValueError("각 자막은 1~60자로 입력해 주세요.")
+    try:
+        font_path = find_font(font)
+        photos = [load_photo(path) for path in paths]
+    except SystemExit as error:
+        raise ValueError(str(error)) from error
+    # 인코딩 전에 모든 자막을 검사합니다.
+    caption_frames = [caption_image(text, font_path, highlight_words) for text in captions]
     layers = []
     for i, photo in enumerate(photos):
         duration = SCENE_SECONDS
@@ -144,21 +159,35 @@ def main():
         scene = scene.with_effects(effects)
         layers.append(scene.with_start(i * SCENE_SECONDS))
     # 자막은 배경 전환과 별도로 정확히 0/5/10초에 바뀝니다.
-    for i, text in enumerate(CAPTIONS):
-        layers.append(ImageClip(caption_image(text, font_path))
+    for i, frame in enumerate(caption_frames):
+        layers.append(ImageClip(frame)
                       .with_duration(SCENE_SECONDS).with_position(caption_position)
                       .with_start(i * SCENE_SECONDS))
     video = CompositeVideoClip(layers, size=(WIDTH, HEIGHT)).with_duration(TOTAL_SECONDS)
-    output = ROOT / "output/ai_shorts.mp4"
+    output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     try:
         video.write_videofile(str(output), fps=FPS, codec="libx264", audio=False,
-                              preset="fast", threads=2,
+                              preset="fast", threads=2, logger=logger,
                               ffmpeg_params=["-crf", "20", "-pix_fmt", "yuv420p", "-movflags", "+faststart"])
     finally:
         video.close()
         for layer in layers:
             layer.close()
+    return output
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--font", help="한글 TTF/OTF/TTC 폰트 경로")
+    parser.add_argument("--photos", type=Path, default=ROOT / "shorts_사진",
+                        help="사진 3장이 있는 폴더")
+    args = parser.parse_args()
+    try:
+        output = render_video(photo_paths(args.photos), CAPTIONS,
+                              ROOT / "output/ai_shorts.mp4", font=args.font)
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
     print(f"완료: {output}")
 
 
